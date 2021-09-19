@@ -92,6 +92,8 @@ func (a *Account) getCipher() (Cipher, error) {
 		return &AesCtr{KeyBytes: 16}, nil
 	case CipherType_AES_256_CTR:
 		return &AesCtr{KeyBytes: 32}, nil
+	case CipherType_RC4_MD5:
+		return &Rc4Md5{IVBytes: 16}, nil
 	default:
 		return nil, newError("Unsupported cipher.")
 	}
@@ -256,6 +258,50 @@ func (v *AesCtr) DecodePacket(key []byte, b *buf.Buffer) error {
 	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
 	b.Advance(v.IVSize())
 	return nil
+}
+
+type Rc4Md5 struct {
+	IVBytes int32
+}
+
+func (*Rc4Md5) IsAEAD() bool {
+	return false
+}
+
+func (v *Rc4Md5) KeySize() int32 {
+	return 16
+}
+
+func (v *Rc4Md5) IVSize() int32 {
+	return v.IVBytes
+}
+
+func (v *Rc4Md5) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
+	stream := crypto.NewRc4Md5Stream(key, iv)
+	return &buf.SequentialWriter{Writer: crypto.NewCryptionWriter(stream, writer)}, nil
+}
+
+func (v *Rc4Md5) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
+	stream := crypto.NewRc4Md5Stream(key, iv)
+	return &buf.SingleReader{Reader: crypto.NewCryptionReader(stream, reader)}, nil
+}
+
+func (v *Rc4Md5) EncodePacket(key []byte, b *buf.Buffer) error {
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewRc4Md5Stream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	return nil
+}
+
+func (v *Rc4Md5) DecodePacket(key []byte, b *buf.Buffer) error {
+	if b.Len() <= v.IVSize() {
+		return newError("insufficient data: ", b.Len())
+	}
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewRc4Md5Stream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	b.Advance(v.IVSize())
+        return nil
 }
 
 type AEADCipher struct {
