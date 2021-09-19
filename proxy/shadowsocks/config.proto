@@ -29,6 +29,7 @@ enum CipherType {
   CHACHA20_IETF = 8;
   AES_128_CTR = 9;
   AES_256_CTR = 10;
+  RC4_MD5 = 11;
 }
 
 message ServerConfig {
