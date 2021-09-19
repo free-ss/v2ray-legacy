@@ -84,6 +84,10 @@ func (a *Account) getCipher() (Cipher, error) {
 		return &AesCfb{KeyBytes: 16}, nil
 	case CipherType_AES_256_CFB:
 		return &AesCfb{KeyBytes: 32}, nil
+	case CipherType_CHACHA20:
+		return &ChaCha20{IVBytes: 8}, nil
+	case CipherType_CHACHA20_IETF:
+		return &ChaCha20{IVBytes: 12}, nil
 	default:
 		return nil, newError("Unsupported cipher.")
 	}
@@ -116,6 +120,50 @@ type Cipher interface {
 	IsAEAD() bool
 	EncodePacket(key []byte, b *buf.Buffer) error
 	DecodePacket(key []byte, b *buf.Buffer) error
+}
+
+type ChaCha20 struct {
+	IVBytes int32
+}
+
+func (*ChaCha20) IsAEAD() bool {
+	return false
+}
+
+func (v *ChaCha20) KeySize() int32 {
+	return 32
+}
+
+func (v *ChaCha20) IVSize() int32 {
+	return v.IVBytes
+}
+
+func (v *ChaCha20) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
+	stream := crypto.NewChaCha20Stream(key, iv)
+	return &buf.SequentialWriter{Writer: crypto.NewCryptionWriter(stream, writer)}, nil
+}
+
+func (v *ChaCha20) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
+	stream := crypto.NewChaCha20Stream(key, iv)
+	return &buf.SingleReader{Reader: crypto.NewCryptionReader(stream, reader)}, nil
+}
+
+func (v *ChaCha20) EncodePacket(key []byte, b *buf.Buffer) error {
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewChaCha20Stream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	return nil
+}
+
+func (v *ChaCha20) DecodePacket(key []byte, b *buf.Buffer) error {
+	if b.Len() <= v.IVSize() {
+		return newError("insufficient data: ", b.Len())
+	}
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewChaCha20Stream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	b.Advance(v.IVSize())
+	return nil
 }
 
 type AesCfb struct {

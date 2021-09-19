@@ -25,6 +25,10 @@ func cipherFromString(c string) shadowsocks.CipherType {
 		return shadowsocks.CipherType_AES_128_CFB
 	case "aes-256-cfb":
 		return shadowsocks.CipherType_AES_256_CFB
+	case "chacha20":
+		return shadowsocks.CipherType_CHACHA20
+	case "chacha20-ietf":
+		return shadowsocks.CipherType_CHACHA20_IETF
 	default:
 		return shadowsocks.CipherType_UNKNOWN
 	}
