@@ -88,6 +88,10 @@ func (a *Account) getCipher() (Cipher, error) {
 		return &ChaCha20{IVBytes: 8}, nil
 	case CipherType_CHACHA20_IETF:
 		return &ChaCha20{IVBytes: 12}, nil
+	case CipherType_AES_128_CTR:
+		return &AesCtr{KeyBytes: 16}, nil
+	case CipherType_AES_256_CTR:
+		return &AesCtr{KeyBytes: 32}, nil
 	default:
 		return nil, newError("Unsupported cipher.")
 	}
@@ -205,6 +209,50 @@ func (v *AesCfb) DecodePacket(key []byte, b *buf.Buffer) error {
 	}
 	iv := b.BytesTo(v.IVSize())
 	stream := crypto.NewAesDecryptionStream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	b.Advance(v.IVSize())
+	return nil
+}
+
+type AesCtr struct {
+	KeyBytes int32
+}
+
+func (*AesCtr) IsAEAD() bool {
+	return false
+}
+
+func (v *AesCtr) KeySize() int32 {
+	return v.KeyBytes
+}
+
+func (v *AesCtr) IVSize() int32 {
+	return 16
+}
+
+func (v *AesCtr) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
+	stream := crypto.NewAesCTRStream(key, iv)
+	return &buf.SequentialWriter{Writer: crypto.NewCryptionWriter(stream, writer)}, nil
+}
+
+func (v *AesCtr) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
+	stream := crypto.NewAesCTRStream(key, iv)
+	return &buf.SingleReader{Reader: crypto.NewCryptionReader(stream, reader)}, nil
+}
+
+func (v *AesCtr) EncodePacket(key []byte, b *buf.Buffer) error {
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewAesCTRStream(key, iv)
+	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
+	return nil
+}
+
+func (v *AesCtr) DecodePacket(key []byte, b *buf.Buffer) error {
+	if b.Len() <= v.IVSize() {
+		return newError("insufficient data: ", b.Len())
+	}
+	iv := b.BytesTo(v.IVSize())
+	stream := crypto.NewAesCTRStream(key, iv)
 	stream.XORKeyStream(b.BytesFrom(v.IVSize()), b.BytesFrom(v.IVSize()))
 	b.Advance(v.IVSize())
 	return nil
